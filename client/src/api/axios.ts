@@ -2,16 +2,15 @@ import axios from "axios";
 
 let accessToken: string | null = null;
 
-export const setAccessToken = (token: string | null) => {
+export function setAccessToken(token: string | null) {
   accessToken = token;
-};
+}
 
 const api = axios.create({
-  baseURL: "http://localhost:8080",
-  withCredentials: true, // VERY IMPORTANT for refresh cookie
+  baseURL: import.meta.env.VITE_API_BASE_URL,
+  withCredentials: true,
 });
 
-// Attach access token
 api.interceptors.request.use((config) => {
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`;
@@ -19,30 +18,32 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Auto refresh on 401
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retry
+    ) {
       originalRequest._retry = true;
 
       try {
-        const refreshRes = await axios.post(
-          "http://localhost:8080/auth/refresh",
+        const res = await axios.post(
+          `${import.meta.env.VITE_API_BASE_URL}/auth/refresh`,
           {},
           { withCredentials: true }
         );
 
-        const newAccessToken = refreshRes.data.access_token;
+        const newAccessToken = res.data.access_token;
         setAccessToken(newAccessToken);
 
         originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
 
         return api(originalRequest);
       } catch (refreshError) {
-        console.error("Refresh failed:", refreshError);
+        setAccessToken(null);
         return Promise.reject(refreshError);
       }
     }

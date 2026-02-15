@@ -4,12 +4,15 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 
 	firebase "firebase.google.com/go/v4"
 	"google.golang.org/api/option"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
+	"github.com/joho/godotenv"
 
 	"secure-auth-backend/internal/auth"
 	"secure-auth-backend/internal/database"
@@ -17,33 +20,65 @@ import (
 
 func main() {
 
-	databaseURL := "postgres://postgres:admin@localhost:5433/secure_auth"
+	// Load .env file
+	err := godotenv.Load()
+	if err != nil {
+		log.Println("No .env file found, using system environment variables")
+	}
+
+	// Read environment variables
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		log.Fatal("DATABASE_URL not set")
+	}
+
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		log.Fatal("JWT_SECRET not set")
+	}
+
+	// Initialize Database
 	db := database.NewPostgres(databaseURL)
 
+	// Initialize Firebase
 	opt := option.WithCredentialsFile("firebase-service-account.json")
-	app, _ := firebase.NewApp(context.Background(), nil, opt)
-	fbAuth, _ := app.Auth(context.Background())
+	app, err := firebase.NewApp(context.Background(), nil, opt)
+	if err != nil {
+		log.Fatal("Failed to initialize Firebase:", err)
+	}
 
-	jwtSecret := []byte("super-secret-key")
+	fbAuth, err := app.Auth(context.Background())
+	if err != nil {
+		log.Fatal("Failed to initialize Firebase Auth:", err)
+	}
 
-	authService := auth.NewService(db, fbAuth, jwtSecret)
+	// Initialize Auth Service
+	authService := auth.NewService(db, fbAuth, []byte(jwtSecret))
 	authHandler := auth.NewHandler(authService)
 
+	// Setup Router
 	r := chi.NewRouter()
 
+	allowedOriginsEnv := os.Getenv("ALLOWED_ORIGINS")
+	if allowedOriginsEnv == "" {
+		log.Fatal("ALLOWED_ORIGINS not set")
+	}
+
+	allowedOrigins := strings.Split(allowedOriginsEnv, ",")
+
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:5173"},
+		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
 		AllowCredentials: true,
 	}))
 
-	// Auth routes
+	// Auth Routes
 	r.Post("/auth/exchange", authHandler.Exchange)
 	r.Post("/auth/refresh", authHandler.Refresh)
 	r.Post("/auth/logout", authHandler.Logout)
 
-	// Protected routes
+	// Protected Routes
 	r.Group(func(r chi.Router) {
 		r.Use(authService.JWTMiddleware)
 		r.Get("/profile", authHandler.Profile)
