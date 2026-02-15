@@ -134,7 +134,7 @@ Backend configuration is managed using environment variables loaded via `godoten
 Create a `.env` file in the root of the repository:
 
 ```
-DATABASE_URL=postgres://postgres:admin@localhost:5433/secure_auth
+DATABASE_URL=postgres://your_username:your_password@localhost:5433/secure_auth
 JWT_SECRET=super-secret-key
 ALLOWED_ORIGINS=http://localhost:5173
 ```
@@ -331,5 +331,3 @@ It reflects patterns commonly used in production systems.
 * Add Docker Compose setup
 * Add integration tests
 * Add role-based access control
-
----
