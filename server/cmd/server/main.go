@@ -16,6 +16,8 @@ import (
 
 	"secure-auth-backend/internal/auth"
 	"secure-auth-backend/internal/database"
+	"secure-auth-backend/internal/middleware"
+	"time"
 )
 
 func main() {
@@ -73,14 +75,25 @@ func main() {
 		AllowCredentials: true,
 	}))
 
+	rateLimiter := middleware.NewRateLimiter(5, time.Minute)
+
 	// Auth Routes
-	r.Post("/auth/exchange", authHandler.Exchange)
-	r.Post("/auth/refresh", authHandler.Refresh)
+
+	// rate limiter - 5 request per min
+	r.Group(func(r chi.Router) {
+		r.Use(rateLimiter.Middleware)
+
+		r.Post("/auth/exchange", authHandler.Exchange)
+		r.Post("/auth/refresh", authHandler.Refresh)
+	})
+
 	r.Post("/auth/logout", authHandler.Logout)
 
 	// Protected Routes
 	r.Group(func(r chi.Router) {
+		r.Use(rateLimiter.Middleware)
 		r.Use(authService.JWTMiddleware)
+
 		r.Get("/profile", authHandler.Profile)
 	})
 

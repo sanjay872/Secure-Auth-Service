@@ -1,6 +1,6 @@
 # Secure Auth Service
 
-A full-stack authentication system built with React and Go implementing JWT-based access control, refresh token rotation, secure cookie handling, and interceptor-driven session renewal.
+A full-stack authentication system built with React and Go implementing JWT-based access control, refresh token rotation, secure cookie handling, configurable CORS, and IP-based rate limiting.
 
 This project demonstrates production-style authentication architecture rather than basic login functionality.
 
@@ -8,15 +8,15 @@ This project demonstrates production-style authentication architecture rather th
 
 ## Tech Stack
 
-**Frontend**
+### Frontend
 
 * React (TypeScript)
 * Vite
 * Tailwind CSS
-* Axios (interceptors)
+* Axios with interceptor-based token refresh
 * Firebase Authentication (email/password)
 
-**Backend**
+### Backend
 
 * Go (Golang)
 * Chi Router
@@ -24,6 +24,7 @@ This project demonstrates production-style authentication architecture rather th
 * JWT (HS256)
 * Firebase Admin SDK
 * godotenv (environment configuration)
+* Custom IP-based rate limiting middleware
 
 ---
 
@@ -45,19 +46,20 @@ secure-auth-service/
 │   └── main.go
 │
 ├── internal/
-│   ├── auth/                # Auth handlers, middleware, service
-│   └── database/            # PostgreSQL connection
+│   ├── auth/                # Handlers, service, middleware
+│   ├── database/            # PostgreSQL connection
+│   └── middleware/          # Rate limiter
 │
 ├── scripts/
-│   └── database.sql         # DB schema
+│   └── database.sql
 │
 ├── firebase-service-account.json
-├── .env                     # Backend environment config
+├── .env                     # Backend environment configuration
 ├── go.mod
 └── go.sum
 ```
 
-Frontend and backend are independent applications within a single repository.
+Frontend and backend are separate applications inside one repository.
 
 ---
 
@@ -66,9 +68,9 @@ Frontend and backend are independent applications within a single repository.
 ### Access Token
 
 * JWT (HS256)
-* Short-lived
-* Stored in memory (never in localStorage)
-* Sent in `Authorization: Bearer` header
+* Short-lived (default 15 minutes)
+* Stored in memory only
+* Sent via `Authorization: Bearer <token>`
 
 ### Refresh Token
 
@@ -82,9 +84,9 @@ Frontend and backend are independent applications within a single repository.
 
 ## Authentication Flow
 
-1. User logs in via Firebase (frontend).
+1. User logs in via Firebase.
 
-2. Firebase returns an ID token.
+2. Frontend receives Firebase ID token.
 
 3. Frontend calls:
 
@@ -93,9 +95,9 @@ Frontend and backend are independent applications within a single repository.
 4. Backend:
 
    * Verifies Firebase ID token
-   * Issues access token
+   * Issues JWT access token
    * Stores refresh token in database
-   * Sets refresh token in httpOnly cookie
+   * Sets refresh token as httpOnly cookie
 
 5. Frontend stores access token in memory.
 
@@ -106,22 +108,36 @@ Frontend and backend are independent applications within a single repository.
    * Frontend receives 401
    * Automatically calls `/auth/refresh`
    * Backend validates and rotates refresh token
-   * Returns new access token
+   * Issues new access token
    * Frontend retries original request
 
 ---
 
 ## Security Features
 
-* Access token stored in memory only
+* Access token stored in memory (not localStorage)
 * Refresh token stored in httpOnly cookie
 * Refresh token rotation implemented
 * Refresh token revocation on logout
 * JWT signature verification (HS256)
 * Environment-based secret configuration
-* Configurable CORS origins
-* Basic rate limiting middleware
+* Configurable CORS origins via environment variables
+* IP-based rate limiting on authentication endpoints
 * No secrets committed to repository
+
+---
+
+## Rate Limiting
+
+Authentication endpoints (`/auth/exchange`, `/auth/refresh`) are protected by a custom in-memory rate limiter:
+
+* IP-based tracking
+* Configurable request limit per time window
+* Thread-safe implementation using mutex
+* Automatic cleanup of stale clients
+* Returns HTTP 429 when limit is exceeded
+
+This prevents brute-force and abuse attempts on login endpoints.
 
 ---
 
@@ -129,75 +145,47 @@ Frontend and backend are independent applications within a single repository.
 
 ### Backend (.env)
 
-Backend configuration is managed using environment variables loaded via `godotenv`.
-
-Create a `.env` file in the root of the repository:
+Create `.env` in repository root:
 
 ```
-DATABASE_URL=postgres://your_username:your_password@localhost:5433/secure_auth
+DATABASE_URL=postgres://postgres:admin@localhost:5433/secure_auth
 JWT_SECRET=super-secret-key
 ALLOWED_ORIGINS=http://localhost:5173
 ```
 
-Multiple origins are supported using comma-separated values:
+Multiple origins supported:
 
 ```
 ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
 ```
 
-**Variables**
+Variables:
 
 * `DATABASE_URL` – PostgreSQL connection string
-* `JWT_SECRET` – Secret used to sign JWT access tokens
-* `ALLOWED_ORIGINS` – Comma-separated list of allowed frontend origins for CORS
-
-Secrets are never hardcoded in the backend.
+* `JWT_SECRET` – Secret for signing JWT tokens
+* `ALLOWED_ORIGINS` – Allowed CORS origins
 
 ---
 
-### Frontend (.env)
+### Frontend (client/.env)
 
-The frontend also uses environment variables via Vite.
-
-Create a `.env` file inside the `client/` directory:
+Create `.env` inside `client/`:
 
 ```
 VITE_API_BASE_URL=http://localhost:8080
 VITE_FIREBASE_API_KEY=your_api_key
 VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
 VITE_FIREBASE_PROJECT_ID=your_project_id
+VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 VITE_FIREBASE_APP_ID=your_app_id
 ```
 
-**Important**
+Important:
 
-* All frontend environment variables must be prefixed with `VITE_`
-* These values are safe for frontend exposure (Firebase client config is public by design)
+* All frontend variables must start with `VITE_`
+* Firebase client config is safe for frontend exposure
 * Backend secrets must never be placed in frontend `.env`
-
----
-
-## How Environment Variables Are Used
-
-### Backend
-
-* `DATABASE_URL` initializes PostgreSQL connection
-* `JWT_SECRET` signs and verifies access tokens
-* `ALLOWED_ORIGINS` configures CORS dynamically
-
-### Frontend
-
-* `VITE_API_BASE_URL` sets Axios base URL
-* Firebase configuration initializes client authentication SDK
-
----
-
-## Security Notes
-
-* Backend secrets are server-side only.
-* Frontend Firebase configuration is public and not considered sensitive.
-* Refresh tokens are stored in httpOnly cookies.
-* Access tokens are stored in memory only.
 
 ---
 
@@ -209,7 +197,7 @@ Run:
 scripts/database.sql
 ```
 
-Table structure:
+Table:
 
 ```
 refresh_tokens:
@@ -255,8 +243,6 @@ Backend runs on:
 
 ### Frontend
 
-Create `.env`
-
 ```
 cd client
 npm install
@@ -277,7 +263,7 @@ POST `/auth/exchange`
 Exchange Firebase ID token for access + refresh tokens.
 
 POST `/auth/refresh`
-Validate refresh token and issue new access token (rotates refresh token).
+Validate refresh token, rotate refresh token, issue new access token.
 
 POST `/auth/logout`
 Revoke refresh token and clear cookie.
@@ -287,47 +273,34 @@ Revoke refresh token and clear cookie.
 ### Protected
 
 GET `/profile`
-Requires valid access token in Authorization header.
+Requires valid JWT access token in Authorization header.
 
 ---
 
-## Testing Session Refresh
+## Unit Tests
 
-1. Login.
-2. Wait for access token to expire.
-3. Click “Reload Profile”.
-4. Observe network:
+Includes basic tests for:
 
-   * `/profile` → 401
-   * `/auth/refresh` → 200
-   * `/profile` → 200
+* JWT creation and validation
+* Refresh token rotation logic
 
-Demonstrates automatic session renewal.
+Run:
+
+```
+go test ./...
+```
 
 ---
 
-## Why This Project Is Important
+## Why This Project Matters
 
 This project demonstrates:
 
 * Secure session management
 * Token rotation strategy
-* Separation of concerns in Go backend
-* Dependency injection patterns
+* Clean modular backend architecture
+* Dependency injection patterns in Go
 * Environment-based configuration
-* Interceptor-driven token refresh on frontend
-* Real-world authentication architecture
-
-It reflects patterns commonly used in production systems.
-
----
-
-## Future Improvements
-
-* Use RS256 with key pairs
-* Add Redis support
-* Add CSRF protection
-* Add structured logging
-* Add Docker Compose setup
-* Add integration tests
-* Add role-based access control
+* Interceptor-driven automatic session renewal
+* Rate limiting for auth endpoints
+* Production-style authentication design

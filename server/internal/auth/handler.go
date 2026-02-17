@@ -19,7 +19,6 @@ type ExchangeRequest struct {
 	IDToken string `json:"id_token"`
 }
 
-// Tune these for dev vs prod
 const (
 	AccessTTLDev  = 15 * time.Second
 	AccessTTLProd = 15 * time.Minute
