@@ -1,22 +1,18 @@
 package main
 
 import (
-	"context"
 	"log"
 	"net/http"
 	"os"
 	"strings"
 
-	firebase "firebase.google.com/go/v4"
-	"google.golang.org/api/option"
-
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
 	"github.com/joho/godotenv"
 
-	"secure-auth-backend/internal/auth"
-	"secure-auth-backend/internal/database"
+	"secure-auth-backend/database"
 	"secure-auth-backend/internal/middleware"
+	"secure-auth-backend/internal/user"
 	"time"
 )
 
@@ -43,20 +39,20 @@ func main() {
 	db := database.NewPostgres(databaseURL)
 
 	// Initialize Firebase
-	opt := option.WithCredentialsFile("firebase-service-account.json")
-	app, err := firebase.NewApp(context.Background(), nil, opt)
-	if err != nil {
-		log.Fatal("Failed to initialize Firebase:", err)
-	}
+	// opt := option.WithCredentialsFile("firebase-service-account.json")
+	// app, err := firebase.NewApp(context.Background(), nil, opt)
+	// if err != nil {
+	// 	log.Fatal("Failed to initialize Firebase:", err)
+	// }
 
-	fbAuth, err := app.Auth(context.Background())
-	if err != nil {
-		log.Fatal("Failed to initialize Firebase Auth:", err)
-	}
+	// fbAuth, err := app.Auth(context.Background())
+	// if err != nil {
+	// 	log.Fatal("Failed to initialize Firebase Auth:", err)
+	// }
 
-	// Initialize Auth Service
-	authService := auth.NewService(db, fbAuth, []byte(jwtSecret))
-	authHandler := auth.NewHandler(authService)
+	// // Initialize Auth Service
+	// authService := auth.NewService(db, fbAuth, []byte(jwtSecret))
+	// authHandler := auth.NewHandler(authService)
 
 	// Setup Router
 	r := chi.NewRouter()
@@ -77,24 +73,34 @@ func main() {
 
 	rateLimiter := middleware.NewRateLimiter(5, time.Minute)
 
+	// initialise all services and handlers
+
+	// AUTH
+
+	// USER
+	userService := user.NewService(db)
+	userHandler := user.NewHandler(userService)
+
 	// Auth Routes
 
 	// rate limiter - 5 request per min
 	r.Group(func(r chi.Router) {
 		r.Use(rateLimiter.Middleware)
 
-		r.Post("/auth/exchange", authHandler.Exchange)
-		r.Post("/auth/refresh", authHandler.Refresh)
+		// r.Post("/auth/exchange", authHandler.Exchange)
+		// r.Post("/auth/refresh", authHandler.Refresh)
+
+		r.Post("/user", userHandler.CreateUser)
 	})
 
-	r.Post("/auth/logout", authHandler.Logout)
+	//r.Post("/auth/logout", authHandler.Logout)
 
 	// Protected Routes
 	r.Group(func(r chi.Router) {
 		r.Use(rateLimiter.Middleware)
-		r.Use(authService.JWTMiddleware)
+		//r.Use(authService.JWTMiddleware)
 
-		r.Get("/profile", authHandler.Profile)
+		//r.Get("/profile", authHandler.Profile)
 	})
 
 	log.Println("Server running on :8080")

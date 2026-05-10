@@ -1,6 +1,7 @@
 # Security Notes
 
 ## Authentication vs Authorization
+
 ### Authentication
 It is used for checking where a person is actual User of the application or not.
 
@@ -71,3 +72,21 @@ Due to rotation, a refresh token can be used only once.
 - proper cookie config
 - prevented CSRF and XSS attacks
 - rate limiter using in-memory
+
+# Password hashing
+- bcrypt library can be used.
+- For hashing, GenerateFromPassword(password, cost)
+  - password as byte
+  - cost is how much work needs to be done on doing the hashing, 10 to 12, use DefaultCost
+
+## Role-Based Access Control
+- Add new Roles with access level
+- Update existing role access level
+- Delete roles
+- Delete access level on a role
+
+## User roles vs permissions
+Each role will have set of permissions, which defines the thing that can be done by the user. 
+
+## Middleware-based authorization
+Middleware is a layer that do checks before or after a request process.
